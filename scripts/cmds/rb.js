@@ -13,15 +13,15 @@ const MAX_BET = 100000000000;
 
 module.exports = {
   config: {
-    name: "roulette",
-    aliases: ["rb"],
+    name: "rb",
+    aliases: ["redblack", "roulette"],
     version: "2.0.0",
     author: "Pratik Shah",
     countDown: 3,
     role: 0,
     shortDescription: "Red or Black Roulette Arena",
     category: "game",
-    guide: { en: "{p}rb [red/black/green] [bet]" }
+    guide: { en: "{p}rb [red/black] [bet_amount]" }
   },
 
   formatMoney: function (num) {
@@ -48,10 +48,12 @@ module.exports = {
     const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
     const { senderID } = event;
 
-    const choice = args[0] ? args[0].toLowerCase() : "";
-    if (!["red", "black", "green"].includes(choice)) {
-      return sendMsg("🎡 **[ ROULETTE ARENA ]**\n\n❌ Choose color: red, black, or green!\n💡 Usage: #rb red 50b");
+    const pick = args[0] ? args[0].toLowerCase() : "";
+    if (!["red", "r", "black", "b"].includes(pick)) {
+      return sendMsg("🔴 **[ RED BLACK ROULETTE ]**\n\n❌ Pick 'red' or 'black'!\n💡 Usage: #rb red 100b");
     }
+
+    const userChoice = ["red", "r"].includes(pick) ? "RED" : "BLACK";
 
     try {
       let user = await BankUser.findOne({ userID: senderID });
@@ -60,19 +62,14 @@ module.exports = {
       const bet = this.parseBet(args[1], user.balance);
       if (isNaN(bet) || bet <= 0) return sendMsg("❌ Invalid bet amount!");
       if (bet > MAX_BET) return sendMsg(`❌ Max bet limit is $100B!`);
-      if (user.balance < bet) return sendMsg(`❌ Insufficient funds! Balance: $${user.balance.toLocaleString()}`);
+      if (user.balance < bet) return sendMsg(`❌ Insufficient funds!`);
 
-      // Wheel Spin Outcome
-      const rand = Math.random() * 100;
-      let landed = "black";
-      if (rand < 5) landed = "green"; // 5% chance
-      else if (rand < 52) landed = "red"; // 47% chance
-      else landed = "black";
+      // Roll result
+      const rand = Math.random();
+      const outcome = rand < 0.48 ? "RED" : rand < 0.96 ? "BLACK" : "GREEN ZERO";
 
-      const isWin = choice === landed;
-      let multiplier = landed === "green" ? 14 : 2;
-      let winAmount = isWin ? bet * multiplier : 0;
-      let newBalance = isWin ? user.balance + (winAmount - bet) : user.balance - bet;
+      const isWin = userChoice === outcome;
+      let newBalance = isWin ? user.balance + bet : user.balance - bet;
 
       await BankUser.updateOne({ userID: senderID }, { $set: { balance: newBalance } });
 
@@ -85,70 +82,72 @@ module.exports = {
       const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
-      ctx.fillStyle = isWin ? "#170606" : "#0d0404";
+      ctx.fillStyle = isWin ? "#0d1f14" : "#240a0a";
       ctx.fillRect(0, 0, 800, 420);
 
-      ctx.strokeStyle = "#e74c3c";
+      ctx.strokeStyle = isWin ? "#22c55e" : "#ef4444";
       ctx.lineWidth = 4;
       ctx.strokeRect(15, 15, 770, 390);
 
-      // Header Text (Clean Text Badge - No Broken Emoji Boxes)
-      ctx.fillStyle = "#f87171";
-      ctx.font = "bold 24px Sans-serif";
-      ctx.fillText("DI-ABLO CASINO • ROULETTE ARENA", 50, 55);
-
-      // Choice Box & Wheel Box
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.fillRect(50, 80, 320, 140);
-      ctx.fillRect(430, 80, 320, 140);
-
-      ctx.strokeStyle = choice === "red" ? "#ef4444" : (choice === "black" ? "#64748b" : "#22c55e");
-      ctx.lineWidth = 2;
-      ctx.strokeRect(50, 80, 320, 140);
-
-      ctx.strokeStyle = landed === "red" ? "#ef4444" : (landed === "black" ? "#64748b" : "#22c55e");
-      ctx.strokeRect(430, 80, 320, 140);
-
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "bold 16px Sans-serif";
-      ctx.fillText("YOUR CHOICE", 70, 110);
-      ctx.fillText("WHEEL SPUN", 450, 110);
-
-      ctx.font = "bold 32px Sans-serif";
-      ctx.fillStyle = choice === "red" ? "#ef4444" : (choice === "black" ? "#ffffff" : "#22c55e");
-      ctx.fillText(choice.toUpperCase(), 70, 170);
-
-      ctx.fillStyle = landed === "red" ? "#ef4444" : (landed === "black" ? "#ffffff" : "#22c55e");
-      ctx.fillText(landed.toUpperCase(), 450, 170);
-
       ctx.fillStyle = "#f1c40f";
       ctx.font = "bold 24px Sans-serif";
-      ctx.fillText("VS", 385, 160);
+      ctx.fillText("DI-ABLO CASINO • RED BLACK ROULETTE", 50, 55);
 
-      // Info Bar
-      ctx.fillStyle = "rgba(255,255,255,0.05)";
-      ctx.fillRect(50, 240, 700, 45);
-      ctx.fillStyle = "#cbd5e1";
-      ctx.font = "16px Sans-serif";
-      ctx.fillText(`PICKED: ${choice.toUpperCase()}  |  LANDED: ${landed.toUpperCase()}`, 70, 268);
-      ctx.textAlign = "right";
-      ctx.fillText(`BET AMOUNT: $${this.formatMoney(bet)}`, 730, 268);
+      // Pick vs Outcome Box
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(100, 90, 250, 140);
+      ctx.fillRect(450, 90, 250, 140);
+
+      ctx.strokeStyle = userChoice === "RED" ? "#ef4444" : "#3b82f6";
+      ctx.strokeRect(100, 90, 250, 140);
+
+      ctx.strokeStyle = outcome === "RED" ? "#ef4444" : outcome === "BLACK" ? "#3b82f6" : "#22c55e";
+      ctx.strokeRect(450, 90, 250, 140);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 16px Sans-serif";
+      ctx.fillText("YOUR CHOICE", 225, 125);
+      ctx.fillText("ROULETTE LANDED", 575, 125);
+
+      ctx.fillStyle = userChoice === "RED" ? "#f87171" : "#60a5fa";
+      ctx.font = "bold 36px Sans-serif";
+      ctx.fillText(userChoice, 225, 185);
+
+      ctx.fillStyle = outcome === "RED" ? "#f87171" : outcome === "BLACK" ? "#60a5fa" : "#4ade80";
+      ctx.fillText(outcome, 575, 185);
       ctx.textAlign = "left";
 
-      // Result Banner
+      // User Avatar
+      try {
+        const avatarUrl = `https://graph.facebook.com/${senderID}/picture?height=200&width=200&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
+        const avatarImg = await loadImage(avatarUrl);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(80, 295, 30, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(avatarImg, 50, 265, 60, 60);
+        ctx.restore();
+      } catch (e) {}
+
+      // Result Bar
       ctx.fillStyle = isWin ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)";
-      ctx.fillRect(50, 300, 700, 50);
+      ctx.fillRect(120, 265, 630, 60);
       ctx.strokeStyle = isWin ? "#22c55e" : "#ef4444";
-      ctx.strokeRect(50, 300, 700, 50);
+      ctx.strokeRect(120, 265, 630, 60);
 
       ctx.fillStyle = isWin ? "#4ade80" : "#f87171";
-      ctx.font = "bold 20px Sans-serif";
-      ctx.fillText(isWin ? `YOU WON +$${this.formatMoney(winAmount)}!` : `YOU LOST -$${this.formatMoney(bet)}`, 70, 332);
+      ctx.font = "bold 22px Sans-serif";
+      ctx.fillText(isWin ? "[ WINNER! DOUBLED MONEY ]" : "[ LOST! BETTER LUCK NEXT TIME ]", 140, 302);
 
-      // Footer
+      ctx.textAlign = "right";
+      ctx.fillText(isWin ? `+$${this.formatMoney(bet * 2)}` : `-$${this.formatMoney(bet)}`, 730, 302);
+      ctx.textAlign = "left";
+
       ctx.fillStyle = "#64748b";
       ctx.font = "italic 14px Sans-serif";
-      ctx.fillText(`PLAYER: ${userName} • NEW BALANCE: $${newBalance.toLocaleString()}`, 50, 385);
+      ctx.fillText(`PLAYER: ${userName} • NEW BALANCE: $${newBalance.toLocaleString()}`, 50, 375);
 
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
@@ -156,7 +155,7 @@ module.exports = {
       await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
       const payload = {
-        body: `🎡 **[ RED OR BLACK ROULETTE RESULT ]**`,
+        body: `🔴 **[ ROULETTE RESULT ]**`,
         attachment: fs.createReadStream(cachePath)
       };
 
@@ -164,7 +163,7 @@ module.exports = {
       return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
     } catch (e) {
       console.error(e);
-      return sendMsg("❌ Roulette Error!");
+      return sendMsg("❌ Red Black Error!");
     }
   }
 };
