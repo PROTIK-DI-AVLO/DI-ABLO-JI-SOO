@@ -13,104 +13,131 @@ const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUse
 module.exports = {
   config: {
     name: "bal",
-    aliases: ["balance", "money"],
-    version: "2.0.0",
+    aliases: ["balance", "money", "wallet"],
+    version: "2.5.0",
     author: "Pratik Shah",
     countDown: 2,
     role: 0,
-    shortDescription: "Check Bank Card Balance",
+    shortDescription: "Check Bank Balance Card",
     category: "banking",
-    guide: { en: "{p}bal" }
+    guide: { en: "{p}bal [@mention]" }
+  },
+
+  formatMoney: function (num) {
+    if (num >= 1000000000) return (num / 1000000000).toFixed(1).replace(/\.0$/, "") + "B";
+    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, "") + "K";
+    return num.toLocaleString();
   },
 
   onStart: async function ({ api, event, message, usersData }) {
-    const { senderID } = event;
+    const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
+    const { senderID, mentions } = event;
+
+    const mentionIDs = Object.keys(mentions || {});
+    const targetID = mentionIDs.length > 0 ? mentionIDs[0] : senderID;
 
     try {
-      let user = await BankUser.findOne({ userID: senderID });
-      if (!user) user = await BankUser.create({ userID: senderID, balance: 1000 });
+      let user = await BankUser.findOne({ userID: targetID });
+      if (!user) user = await BankUser.create({ userID: targetID, balance: 1000 });
 
-      let userName = senderID;
+      let targetName = targetID;
       if (usersData && typeof usersData.getName === "function") {
-        try { userName = await usersData.getName(senderID); } catch (e) {}
+        try { targetName = await usersData.getName(targetID); } catch (e) {}
       }
 
-      const canvas = createCanvas(750, 420);
+      // Canvas Digital Card
+      const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
-      // Dark Luxury Card Background
-      const gradient = ctx.createLinearGradient(0, 0, 750, 420);
-      gradient.addColorStop(0, "#0f172a");
-      gradient.addColorStop(0.5, "#1e1b4b");
-      gradient.addColorStop(1, "#090d16");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 750, 420);
+      ctx.fillStyle = "#0a1128";
+      ctx.fillRect(0, 0, 800, 420);
 
-      ctx.strokeStyle = "#00f2fe";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(15, 15, 720, 390);
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(15, 15, 770, 390);
 
       ctx.fillStyle = "#38bdf8";
       ctx.font = "bold 24px Sans-serif";
-      ctx.fillText("DI-ABLO BANK CARD", 50, 60);
+      ctx.fillText("DI-ABLO BANK • DIGITAL VIP WALLET", 50, 55);
 
-      // User Avatar Frame
+      // User Avatar
       try {
-        const url = `https://graph.facebook.com/${senderID}/picture?height=300&width=300&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
-        const img = await loadImage(url);
+        const avatarUrl = `https://graph.facebook.com/${targetID}/picture?height=300&width=300&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
+        const avatarImg = await loadImage(avatarUrl);
+
         ctx.save();
         ctx.beginPath();
-        ctx.arc(630, 90, 45, 0, Math.PI * 2);
+        ctx.arc(120, 180, 55, 0, Math.PI * 2);
         ctx.closePath();
         ctx.clip();
-        ctx.drawImage(img, 585, 45, 90, 90);
+        ctx.drawImage(avatarImg, 65, 125, 110, 110);
         ctx.restore();
 
         ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(630, 90, 46, 0, Math.PI * 2);
+        ctx.arc(120, 180, 56, 0, Math.PI * 2);
         ctx.stroke();
       } catch (e) {}
 
-      // Holder Details
+      // Balance Info Box
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(200, 100, 550, 160);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+      ctx.strokeRect(200, 100, 550, 160);
+
       ctx.fillStyle = "#94a3b8";
       ctx.font = "bold 16px Sans-serif";
-      ctx.fillText(`HOLDER: ${userName.toUpperCase()}`, 50, 130);
-      ctx.fillText(`ID: ${senderID}`, 50, 160);
-
-      // Balance Display Box
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.fillRect(50, 200, 650, 110);
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
-      ctx.strokeRect(50, 200, 650, 110);
-
-      ctx.fillStyle = "#4ade80";
-      ctx.font = "bold 18px Sans-serif";
-      ctx.fillText("CURRENT BALANCE", 75, 235);
+      ctx.fillText("ACCOUNT HOLDER", 230, 135);
 
       ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 22px Sans-serif";
+      ctx.fillText(targetName, 230, 165);
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 14px Sans-serif";
+      ctx.fillText("TOTAL NET BALANCE", 230, 205);
+
+      ctx.fillStyle = "#4ade80";
       ctx.font = "bold 36px Sans-serif";
-      ctx.fillText(`$${user.balance.toLocaleString()}`, 75, 285);
+      ctx.fillText(`$${user.balance.toLocaleString()} (${this.formatMoney(user.balance)})`, 230, 245);
+
+      // Card VIP Tag
+      ctx.fillStyle = "rgba(56, 189, 248, 0.15)";
+      ctx.fillRect(50, 285, 700, 55);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
+      ctx.strokeRect(50, 285, 700, 55);
+
+      ctx.fillStyle = "#f1c40f";
+      ctx.font = "bold 18px Sans-serif";
+      ctx.fillText("CARD STATUS: VIP PLATINUM MEMBER", 70, 320);
+
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "bold 16px Sans-serif";
+      ctx.fillText(`ID: ${targetID}`, 730, 320);
+      ctx.textAlign = "left";
 
       ctx.fillStyle = "#64748b";
       ctx.font = "italic 14px Sans-serif";
-      ctx.fillText("DI-ABLO BANKING SYSTEM • OFFICIAL VIP CARD", 50, 375);
+      ctx.fillText("DI-ABLO BANKING SYSTEM • SECURE ENCRYPTED CARD", 50, 375);
 
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
-      const cachePath = path.join(cacheDir, `bal_${senderID}_${Date.now()}.png`);
+      const cachePath = path.join(cacheDir, `bal_${targetID}_${Date.now()}.png`);
       await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
       const payload = {
-        body: `💳 **[ DI-ABLO BANK CARD ]**\n👤 **Holder:** ${userName}`,
+        body: `💳 [ DIGITAL BANK CARD ]`,
         attachment: fs.createReadStream(cachePath)
       };
 
       const sendCallback = () => { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); };
       return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
+      return sendMsg("❌ Balance Error!");
     }
   }
 };
