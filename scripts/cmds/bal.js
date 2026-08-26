@@ -46,82 +46,92 @@ module.exports = {
         try { targetName = await usersData.getName(targetID); } catch (e) {}
       }
 
-      // Canvas Digital Card
+      // Canvas Digital Card (Green Theme styled like 5053.jpg)
       const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
-      ctx.fillStyle = "#0a1128";
+      // Background
+      ctx.fillStyle = "#091c10";
       ctx.fillRect(0, 0, 800, 420);
 
-      ctx.strokeStyle = "#38bdf8";
+      // Outer Border
+      ctx.strokeStyle = "#10b981";
       ctx.lineWidth = 4;
       ctx.strokeRect(15, 15, 770, 390);
 
-      ctx.fillStyle = "#38bdf8";
-      ctx.font = "bold 24px Sans-serif";
-      ctx.fillText("DI-ABLO BANK • DIGITAL VIP WALLET", 50, 55);
+      // Top Title
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 28px Sans-serif";
+      ctx.fillText("WALLET BALANCE", 50, 65);
+      
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "16px Sans-serif";
+      ctx.fillText("Digital Payment Card", 50, 90);
 
-      // User Avatar
+      // Draw User Avatar (Top Right)
       try {
         const avatarUrl = `https://graph.facebook.com/${targetID}/picture?height=300&width=300&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
         const avatarImg = await loadImage(avatarUrl);
 
+        // Circular clip for avatar
         ctx.save();
         ctx.beginPath();
-        ctx.arc(120, 180, 55, 0, Math.PI * 2);
+        ctx.arc(660, 130, 85, 0, Math.PI * 2);
         ctx.closePath();
         ctx.clip();
-        ctx.drawImage(avatarImg, 65, 125, 110, 110);
+        ctx.drawImage(avatarImg, 575, 45, 170, 170);
         ctx.restore();
 
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 3;
+        // Thick green border around avatar
+        ctx.strokeStyle = "#10b981"; 
+        ctx.lineWidth = 12;
         ctx.beginPath();
-        ctx.arc(120, 180, 56, 0, Math.PI * 2);
+        ctx.arc(660, 130, 85, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Small active status dot (Bottom right of avatar)
+        ctx.fillStyle = "#10b981";
+        ctx.beginPath();
+        ctx.arc(720, 190, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#091c10";
+        ctx.lineWidth = 4;
         ctx.stroke();
       } catch (e) {}
 
-      // Balance Info Box
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.fillRect(200, 100, 550, 160);
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
-      ctx.strokeRect(200, 100, 550, 160);
-
+      // Balance Info Section
       ctx.fillStyle = "#94a3b8";
       ctx.font = "bold 16px Sans-serif";
-      ctx.fillText("ACCOUNT HOLDER", 230, 135);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 22px Sans-serif";
-      ctx.fillText(targetName, 230, 165);
-
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "bold 14px Sans-serif";
-      ctx.fillText("TOTAL NET BALANCE", 230, 205);
+      ctx.fillText("AVAILABLE BALANCE", 50, 160);
 
       ctx.fillStyle = "#4ade80";
-      ctx.font = "bold 36px Sans-serif";
-      ctx.fillText(`$${user.balance.toLocaleString()} (${this.formatMoney(user.balance)})`, 230, 245);
+      ctx.font = "bold 65px Sans-serif";
+      ctx.fillText(`$${this.formatMoney(user.balance)}`, 45, 230);
 
-      // Card VIP Tag
-      ctx.fillStyle = "rgba(56, 189, 248, 0.15)";
-      ctx.fillRect(50, 285, 700, 55);
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
-      ctx.strokeRect(50, 285, 700, 55);
+      // Card Holder
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 14px Sans-serif";
+      ctx.fillText("CARD HOLDER", 50, 290);
 
-      ctx.fillStyle = "#f1c40f";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 24px Sans-serif";
+      ctx.fillText(targetName.toUpperCase(), 50, 320);
+
+      // User ID
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 14px Sans-serif";
+      ctx.fillText("USER ID", 50, 360);
+      
+      ctx.fillStyle = "#ffffff";
       ctx.font = "bold 18px Sans-serif";
-      ctx.fillText("CARD STATUS: VIP PLATINUM MEMBER", 70, 320);
+      ctx.fillText(targetID, 50, 385);
 
-      ctx.textAlign = "right";
-      ctx.fillStyle = "#cbd5e1";
+      // Fake Chip/Details on Right side
+      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+      ctx.fillRect(580, 320, 180, 50);
+      ctx.fillStyle = "#10b981";
       ctx.font = "bold 16px Sans-serif";
-      ctx.fillText(`ID: ${targetID}`, 730, 320);
-      ctx.textAlign = "left";
-
-      ctx.fillStyle = "#64748b";
-      ctx.font = "italic 14px Sans-serif";
-      ctx.fillText("DI-ABLO BANKING SYSTEM • SECURE ENCRYPTED CARD", 50, 375);
+      ctx.fillText("CARD: PREMIUM", 600, 350);
 
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
