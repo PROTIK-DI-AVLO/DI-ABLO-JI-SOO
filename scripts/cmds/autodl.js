@@ -100,15 +100,7 @@ module.exports = {
 
       const speed = ((Date.now() - startTime) / 1000).toFixed(2);
 
-      const msg = `
-╭━〔 ✅ Auto Download 〕━╮
-┃ 📌 Title     : ${title}
-┃ 🌐 Platform  : ${platform}
-┃ 👤 Author    : ${author}
-┃ ⚡ Speed     : ${speed}s
-┃ 🆔 User ID   : ${event.senderID}
-╰━━━━━━━━━━━━━━━━━╯
-`;
+      const msg = 
 
       api.sendMessage(
         {
