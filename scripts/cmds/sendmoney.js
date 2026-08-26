@@ -1,25 +1,26 @@
 const mongoose = require("mongoose");
-const { createCanvas } = require("canvas");
+const { createCanvas, loadImage } = require("canvas");
 const fs = require("fs-extra");
 const path = require("path");
 
-const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", new mongoose.Schema({
+const bankUserSchema = new mongoose.Schema({
   userID: { type: String, required: true, unique: true },
-  balance: { type: Number, default: 0 },
-  loan: { type: Number, default: 0 }
-}));
+  balance: { type: Number, default: 0 }
+});
+
+const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", bankUserSchema);
 
 module.exports = {
   config: {
     name: "sendmoney",
     aliases: ["pay", "transfer"],
     version: "2.0.0",
-    author: "Protik Shah",
-    countDown: 2,
+    author: "Pratik Shah",
+    countDown: 3,
     role: 0,
-    shortDescription: "Send money to another user with image receipt",
-    category: "economy",
-    guide: { en: "{p}sendmoney [@user / reply] [amount / 100b / all]" }
+    shortDescription: "Transfer money to another user",
+    category: "banking",
+    guide: { en: "{p}pay @mention [amount]" }
   },
 
   formatMoney: function (num) {
@@ -29,174 +30,128 @@ module.exports = {
     return num.toLocaleString();
   },
 
+  parseBet: function (input) {
+    if (!input) return NaN;
+    const str = input.toLowerCase().trim();
+    const match = str.match(/^(\d+(\.\d+)?)\s*([kmb])?$/);
+    if (!match) return NaN;
+    let val = parseFloat(match[1]);
+    if (match[3] === "k") val *= 1000;
+    if (match[3] === "m") val *= 1000000;
+    if (match[3] === "b") val *= 1000000000;
+    return Math.floor(val);
+  },
+
   onStart: async function ({ api, event, args, message, usersData }) {
-    const senderID = event.senderID;
     const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
+    const { senderID, mentions } = event;
 
-    let targetID = null;
-    if (event.type === "message_reply") {
-      targetID = event.messageReply.senderID;
-    } else if (Object.keys(event.mentions || {}).length > 0) {
-      targetID = Object.keys(event.mentions)[0];
-    }
+    const mentionIDs = Object.keys(mentions || {});
+    if (mentionIDs.length === 0) return sendMsg("💸 **[ MONEY TRANSFER ]**\n\n❌ Tag a user to send money!\n💡 Usage: #pay @mention 100k");
 
-    if (!targetID || targetID === senderID) {
-      return sendMsg("❌ You must mention or reply to another user to send money.");
-    }
+    const targetID = mentionIDs[0];
+    if (targetID === senderID) return sendMsg("❌ You cannot send money to yourself!");
+
+    // Parse amount from remaining args
+    const amountStr = args.filter(a => !a.startsWith("@")).join("");
+    const amount = this.parseBet(amountStr);
+
+    if (isNaN(amount) || amount <= 0) return sendMsg("❌ Invalid transfer amount!");
 
     try {
       let sender = await BankUser.findOne({ userID: senderID });
-      if (!sender) sender = await BankUser.create({ userID: senderID, balance: 1000, loan: 0 });
+      if (!sender || sender.balance < amount) return sendMsg(`❌ Insufficient balance! Your balance: $${sender ? sender.balance.toLocaleString() : 0}`);
 
-      const parseAmount = (input) => {
-        if (!input) return NaN;
-        const lower = input.toLowerCase().trim();
-        if (lower === "all") return sender.balance;
-        if (lower.endsWith("k")) return parseFloat(lower) * 1000;
-        if (lower.endsWith("m")) return parseFloat(lower) * 1000000;
-        if (lower.endsWith("b")) return parseFloat(lower) * 1000000000;
-        return parseInt(input);
-      };
+      let receiver = await BankUser.findOne({ userID: targetID });
+      if (!receiver) receiver = await BankUser.create({ userID: targetID, balance: 0 });
 
-      const amount = parseAmount(args[args.length - 1]);
+      await BankUser.updateOne({ userID: senderID }, { $inc: { balance: -amount } });
+      await BankUser.updateOne({ userID: targetID }, { $inc: { balance: amount } });
 
-      if (isNaN(amount) || amount <= 0) {
-        return sendMsg("❌ Usage: {p}sendmoney [@user / reply] [amount / 100b / all]");
-      }
-
-      if (sender.balance < amount) {
-        return sendMsg(`❌ Transaction Failed. Insufficient Balance!\n💰 Your Balance: $${sender.balance.toLocaleString()}`);
-      }
-
-      let target = await BankUser.findOne({ userID: targetID });
-      if (!target) target = await BankUser.create({ userID: targetID, balance: 1000, loan: 0 });
-
-      sender.balance -= amount;
-      target.balance += amount;
-
-      await sender.save();
-      await target.save();
-
-      let senderName = senderID;
-      let targetName = targetID;
-
+      let senderName = senderID, receiverName = mentions[targetID].replace("@", "");
       if (usersData && typeof usersData.getName === "function") {
-        try {
-          senderName = await usersData.getName(senderID);
-          targetName = await usersData.getName(targetID);
-        } catch (e) {
-          senderName = senderID;
-          targetName = targetID;
-        }
+        try { senderName = await usersData.getName(senderID); } catch (e) {}
       }
 
-      // Canvas Rendering
-      const canvas = createCanvas(800, 500);
+      // Canvas Transfer Receipt
+      const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
-      // Modern Gradient Background
-      const gradient = ctx.createLinearGradient(0, 0, 800, 500);
-      gradient.addColorStop(0, "#0f172a");
-      gradient.addColorStop(0.5, "#1e293b");
-      gradient.addColorStop(1, "#0f172a");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 500);
+      ctx.fillStyle = "#0c192c";
+      ctx.fillRect(0, 0, 800, 420);
 
-      // Neon Cyan Border
       ctx.strokeStyle = "#38bdf8";
       ctx.lineWidth = 4;
-      ctx.strokeRect(20, 20, 760, 460);
+      ctx.strokeRect(15, 15, 770, 390);
 
-      // Header
       ctx.fillStyle = "#38bdf8";
-      ctx.font = "bold 30px Sans-serif";
-      ctx.fillText("💸 DI-ABLO BANK • TRANSFER RECEIPT", 50, 75);
+      ctx.font = "bold 24px Sans-serif";
+      ctx.fillText("DI-ABLO BANK • FUNDS TRANSFER RECEIPT", 50, 55);
 
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(50, 95);
-      ctx.lineTo(750, 95);
-      ctx.stroke();
+      // Draw Sender & Receiver Avatars
+      const drawAvatar = async (x, y, uid, title) => {
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(x, y, 320, 130);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+        ctx.strokeRect(x, y, 320, 130);
 
-      // Sender Box
-      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-      ctx.fillRect(50, 125, 335, 110);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-      ctx.strokeRect(50, 125, 335, 110);
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "bold 14px Sans-serif";
+        ctx.fillText(title, x + 110, y + 40);
 
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "bold 16px Sans-serif";
-      ctx.fillText("SENDER", 65, 155);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 20px Sans-serif";
-      ctx.fillText(senderName.length > 18 ? senderName.slice(0, 16) + ".." : senderName, 65, 190);
-      ctx.fillStyle = "#64748b";
-      ctx.font = "14px Sans-serif";
-      ctx.fillText(`ID: ${senderID}`, 65, 215);
+        try {
+          const url = `https://graph.facebook.com/${uid}/picture?height=200&width=200&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
+          const img = await loadImage(url);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x + 55, y + 65, 35, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(img, x + 20, y + 30, 70, 70);
+          ctx.restore();
+        } catch (e) {}
+      };
 
-      // Receiver Box
-      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-      ctx.fillRect(415, 125, 335, 110);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-      ctx.strokeRect(415, 125, 335, 110);
+      await drawAvatar(50, 90, senderID, "SENDER");
+      await drawAvatar(430, 90, targetID, "RECEIVER");
 
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "bold 16px Sans-serif";
-      ctx.fillText("RECEIVER", 430, 155);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 20px Sans-serif";
-      ctx.fillText(targetName.length > 18 ? targetName.slice(0, 16) + ".." : targetName, 430, 190);
-      ctx.fillStyle = "#64748b";
-      ctx.font = "14px Sans-serif";
-      ctx.fillText(`ID: ${targetID}`, 430, 215);
+      ctx.fillStyle = "#f1c40f";
+      ctx.font = "bold 28px Sans-serif";
+      ctx.fillText(">>>", 380, 160);
 
-      // Main Amount Box
-      ctx.fillStyle = "rgba(16, 185, 129, 0.15)";
-      ctx.fillRect(50, 260, 700, 140);
-      ctx.strokeStyle = "#10b981";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(50, 260, 700, 140);
+      // Amount Banner
+      ctx.fillStyle = "rgba(34, 197, 94, 0.2)";
+      ctx.fillRect(50, 250, 700, 60);
+      ctx.strokeStyle = "#22c55e";
+      ctx.strokeRect(50, 250, 700, 60);
 
-      ctx.fillStyle = "#34d399";
-      ctx.font = "bold 18px Sans-serif";
-      ctx.fillText("TRANSFERRED AMOUNT", 75, 295);
+      ctx.fillStyle = "#4ade80";
+      ctx.font = "bold 22px Sans-serif";
+      ctx.fillText("TRANSFERRED SUCCESSFULLY", 70, 288);
 
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 38px Sans-serif";
-      ctx.fillText(`$${amount.toLocaleString()}`, 75, 350);
-
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "bold 18px Sans-serif";
       ctx.textAlign = "right";
-      ctx.fillText(`REMAINING BAL: $${sender.balance.toLocaleString()}`, 730, 350);
+      ctx.fillText(`+$${this.formatMoney(amount)}`, 730, 288);
       ctx.textAlign = "left";
 
-      // Footer
       ctx.fillStyle = "#64748b";
-      ctx.font = "italic 16px Sans-serif";
-      ctx.fillText("DI-ABLO BANKING SYSTEM • SECURE TRANSACTION", 50, 445);
+      ctx.font = "italic 14px Sans-serif";
+      ctx.fillText(`FROM: ${senderName}  |  TO: ${receiverName}`, 50, 370);
 
-      // Save and Output Handling
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
-      const cachePath = path.join(cacheDir, `sendmoney_${senderID}_${Date.now()}.png`);
+      const cachePath = path.join(cacheDir, `pay_${senderID}_${Date.now()}.png`);
+      await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
-      const buffer = canvas.toBuffer("image/png");
-      await fs.writeFile(cachePath, buffer);
-
-      const msgObj = {
-        body: `💸 **[ MONEY TRANSFERRED SUCCESSFULLY ]**\n📤 **From:** ${senderName}\n📥 **To:** ${targetName}`,
+      const payload = {
+        body: `💸 **[ TRANSFER SUCCESSFUL ]**`,
         attachment: fs.createReadStream(cachePath)
       };
 
-      return api.sendMessage(msgObj, event.threadID, () => {
-        if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      }, event.messageID);
-
-    } catch (err) {
-      console.error("SendMoney Error:", err);
-      return sendMsg("❌ Transaction failed due to an error.");
+      const sendCallback = () => { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); };
+      return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
+    } catch (e) {
+      console.error(e);
+      return sendMsg("❌ Transfer Error!");
     }
   }
 };
