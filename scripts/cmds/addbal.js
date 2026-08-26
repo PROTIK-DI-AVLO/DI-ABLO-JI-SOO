@@ -1,174 +1,138 @@
 const mongoose = require("mongoose");
-const { createCanvas } = require("canvas");
+const { createCanvas, loadImage } = require("canvas");
 const fs = require("fs-extra");
 const path = require("path");
 
-const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", new mongoose.Schema({
+const bankUserSchema = new mongoose.Schema({
   userID: { type: String, required: true, unique: true },
-  balance: { type: Number, default: 0 },
-  loan: { type: Number, default: 0 }
-}));
+  balance: { type: Number, default: 0 }
+});
+
+const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", bankUserSchema);
 
 module.exports = {
   config: {
     name: "addbal",
-    aliases: ["addmoney", "givemoney"],
+    aliases: ["addmoney", "credit"],
     version: "2.0.0",
     author: "Pratik Shah",
     countDown: 2,
-    role: 2,
-    shortDescription: "Add balance to user image receipt (Admin Only)",
-    category: "economy",
-    guide: { en: "{p}addbal [@user / reply] [amount / 100b]" }
+    role: 1, // Admin only
+    shortDescription: "Add balance to user account",
+    category: "admin",
+    guide: { en: "{p}addbal @mention [amount]" }
   },
 
-  adminUIDs: ["61591412309835"],
-  adminName: "ᴅɪ-ᴀʙʟᴏ ᴊɪ-sᴏᴏ",
-
-  parseAmount: function (input) {
+  parseBet: function (input) {
     if (!input) return NaN;
-    const lower = input.toLowerCase().trim();
-    if (lower.endsWith("k")) return parseFloat(lower) * 1000;
-    if (lower.endsWith("m")) return parseFloat(lower) * 1000000;
-    if (lower.endsWith("b")) return parseFloat(lower) * 1000000000;
-    return parseInt(input);
-  },
-
-  formatMoney: function (num) {
-    if (num >= 1000000000) return (num / 1000000000).toFixed(1).replace(/\.0$/, "") + "B";
-    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
-    if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, "") + "K";
-    return num.toLocaleString();
+    const str = input.toLowerCase().trim();
+    const match = str.match(/^(\d+(\.\d+)?)\s*([kmb])?$/);
+    if (!match) return NaN;
+    let val = parseFloat(match[1]);
+    if (match[3] === "k") val *= 1000;
+    if (match[3] === "m") val *= 1000000;
+    if (match[3] === "b") val *= 1000000000;
+    return Math.floor(val);
   },
 
   onStart: async function ({ api, event, args, message, usersData }) {
-    const senderID = event.senderID;
     const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
+    const { senderID, mentions } = event;
 
-    if (!this.adminUIDs.includes(senderID)) {
-      return sendMsg("❌ ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ. ᴏɴʟʏ ᴀᴅᴍɪɴɪsᴛʀᴀᴛᴏʀ ᴅɪ-ᴀʙʟᴏ ᴄᴀɴ ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ.");
-    }
+    const mentionIDs = Object.keys(mentions || {});
+    const targetID = mentionIDs.length > 0 ? mentionIDs[0] : senderID;
 
-    let targetID = senderID;
-    if (event.type === "message_reply") {
-      targetID = event.messageReply.senderID;
-    } else if (Object.keys(event.mentions || {}).length > 0) {
-      targetID = Object.keys(event.mentions)[0];
-    }
+    const amountStr = args.filter(a => !a.startsWith("@")).join("");
+    const amount = this.parseBet(amountStr);
 
-    const rawAmount = args[args.length - 1];
-    const amount = this.parseAmount(rawAmount);
-
-    if (isNaN(amount) || amount <= 0) {
-      return sendMsg("❌ Usage: {p}addbal [@user / reply] [amount / 100b]");
-    }
+    if (isNaN(amount) || amount <= 0) return sendMsg("❌ Invalid credit amount!");
 
     try {
       let user = await BankUser.findOne({ userID: targetID });
-      if (!user) {
-        user = await BankUser.create({ userID: targetID, balance: 1000, loan: 0 });
-      }
+      if (!user) user = await BankUser.create({ userID: targetID, balance: 1000 });
 
-      user.balance += amount;
-      await user.save();
+      const newBalance = user.balance + amount;
+      await BankUser.updateOne({ userID: targetID }, { $set: { balance: newBalance } });
 
       let targetName = targetID;
       if (usersData && typeof usersData.getName === "function") {
-        try {
-          targetName = await usersData.getName(targetID);
-        } catch (e) {
-          targetName = targetID;
-        }
+        try { targetName = await usersData.getName(targetID); } catch (e) {}
       }
 
-      // Canvas Rendering
-      const canvas = createCanvas(800, 480);
+      // Canvas Receipt Render
+      const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
-      // Background
-      const gradient = ctx.createLinearGradient(0, 0, 800, 480);
-      gradient.addColorStop(0, "#081c15");
-      gradient.addColorStop(0.5, "#1b4332");
-      gradient.addColorStop(1, "#081c15");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 480);
+      ctx.fillStyle = "#071c10";
+      ctx.fillRect(0, 0, 800, 420);
 
-      // Border Glow
-      ctx.strokeStyle = "#52b788";
+      ctx.strokeStyle = "#2ecc71";
       ctx.lineWidth = 4;
-      ctx.strokeRect(20, 20, 760, 440);
+      ctx.strokeRect(15, 15, 770, 390);
 
-      // Header
-      ctx.fillStyle = "#74c69d";
-      ctx.font = "bold 30px Sans-serif";
-      ctx.fillText("✅ DI-ABLO BANK • ADMIN CREDIT RECEIPT", 50, 75);
-
-      ctx.strokeStyle = "rgba(116, 198, 157, 0.3)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(50, 95);
-      ctx.lineTo(750, 95);
-      ctx.stroke();
-
-      // Info Texts
-      ctx.fillStyle = "#d8f3dc";
-      ctx.font = "bold 22px Sans-serif";
-      ctx.fillText(`ADMIN: ${this.adminName}`, 50, 145);
-
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = "#2ecc71";
       ctx.font = "bold 24px Sans-serif";
-      ctx.fillText(`RECEIVER: ${targetName.toUpperCase()}`, 50, 185);
+      ctx.fillText("DI-ABLO BANK • ADMIN CREDIT RECEIPT", 50, 55);
 
-      ctx.fillStyle = "#b7e4c7";
-      ctx.font = "20px Sans-serif";
-      ctx.fillText(`TARGET ID: ${targetID}`, 50, 220);
+      // Target Avatar
+      try {
+        const url = `https://graph.facebook.com/${targetID}/picture?height=300&width=300&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
+        const img = await loadImage(url);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(110, 180, 50, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(img, 60, 130, 100, 100);
+        ctx.restore();
 
-      // Amount Box
-      ctx.fillStyle = "rgba(45, 106, 79, 0.4)";
-      ctx.fillRect(50, 250, 700, 130);
-      ctx.strokeStyle = "#52b788";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(50, 250, 700, 130);
+        ctx.strokeStyle = "#2ecc71";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(110, 180, 51, 0, Math.PI * 2);
+        ctx.stroke();
+      } catch (e) {}
 
-      ctx.fillStyle = "#74c69d";
+      // Receipt Details Box
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(190, 100, 560, 160);
+      ctx.strokeStyle = "rgba(46, 204, 113, 0.4)";
+      ctx.strokeRect(190, 100, 560, 160);
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 16px Sans-serif";
+      ctx.fillText(`RECEIVER: ${targetName}`, 220, 140);
+      ctx.fillText(`TARGET ID: ${targetID}`, 220, 170);
+
+      ctx.fillStyle = "#4ade80";
+      ctx.font = "bold 32px Sans-serif";
+      ctx.fillText(`+ $${amount.toLocaleString()}`, 220, 225);
+
+      ctx.fillStyle = "#cbd5e1";
       ctx.font = "bold 18px Sans-serif";
-      ctx.fillText("CREDITED AMOUNT", 75, 285);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 36px Sans-serif";
-      ctx.fillText(`+$${amount.toLocaleString()}`, 75, 335);
-
-      ctx.fillStyle = "#d8f3dc";
-      ctx.font = "bold 20px Sans-serif";
       ctx.textAlign = "right";
-      ctx.fillText(`NEW BALANCE: $${user.balance.toLocaleString()}`, 730, 335);
+      ctx.fillText(`NEW BALANCE: $${newBalance.toLocaleString()}`, 720, 225);
       ctx.textAlign = "left";
 
-      // Footer
-      ctx.fillStyle = "#74c69d";
-      ctx.font = "italic 16px Sans-serif";
-      ctx.fillText("DI-ABLO BANKING SYSTEM • AUTHORIZED TRANSACTION", 50, 435);
+      ctx.fillStyle = "#64748b";
+      ctx.font = "italic 14px Sans-serif";
+      ctx.fillText("DI-ABLO BANKING SYSTEM • AUTHORIZED TRANSACTION", 50, 370);
 
-      // Output Handling
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
-      const cachePath = path.join(cacheDir, `addbal_${targetID}_${Date.now()}.png`);
+      const cachePath = path.join(cacheDir, `add_${targetID}_${Date.now()}.png`);
+      await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
-      const buffer = canvas.toBuffer("image/png");
-      await fs.writeFile(cachePath, buffer);
-
-      const msgObj = {
-        body: `✅ **[ BALANCE CREDITED BY ADMIN ]**\n👤 **User:** ${targetName}`,
+      const payload = {
+        body: `✅ [ BALANCE CREDITED BY ADMIN ]\n👤 **User: ${targetName}`,
         attachment: fs.createReadStream(cachePath)
       };
 
-      return api.sendMessage(msgObj, event.threadID, () => {
-        if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      }, event.messageID);
-
-    } catch (err) {
-      console.error(err);
-      return sendMsg("❌ Failed to add balance and generate receipt!");
+      const sendCallback = () => { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); };
+      return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
+    } catch (e) {
+      console.error(e);
+      return sendMsg("❌ Credit Error!");
     }
   }
 };
