@@ -1,50 +1,27 @@
 const mongoose = require("mongoose");
-const { createCanvas } = require("canvas");
+const { createCanvas, loadImage } = require("canvas");
 const fs = require("fs-extra");
 const path = require("path");
 
 const bankUserSchema = new mongoose.Schema({
   userID: { type: String, required: true, unique: true },
-  balance: { type: Number, default: 0 },
-  loan: { type: Number, default: 0 },
-  betStats: {
-    wins: { type: Number, default: 0 },
-    total: { type: Number, default: 0 }
-  }
+  balance: { type: Number, default: 0 }
 });
 
 const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", bankUserSchema);
-const MAX_BET = 50000000000; // 50 Billion Limit
+const MAX_BET = 100000000000;
 
 module.exports = {
   config: {
     name: "bet",
-    aliases: ["qbet"],
-    version: "9.0.0",
+    aliases: ["quickbet", "b"],
+    version: "2.5.0",
     author: "Pratik Shah",
     countDown: 3,
     role: 0,
-    shortDescription: "Quick money multiplier bet with Canvas Graphic Arena",
+    shortDescription: "Quick Bet Arena",
     category: "game",
-    guide: { en: "{p}bet [amount / 2m / 50b / all]" }
-  },
-
-  parseBet: function (input, userBalance) {
-    if (!input) return null;
-    const str = input.toLowerCase().trim();
-    if (str === "all") return userBalance;
-
-    const match = str.match(/^(\d+(\.\d+)?)\s*([kmb])?$/);
-    if (!match) return null;
-
-    let value = parseFloat(match[1]);
-    const unit = match[3];
-
-    if (unit === "k") value *= 1000;
-    else if (unit === "m") value *= 1000000;
-    else if (unit === "b") value *= 1000000000;
-
-    return Math.floor(value);
+    guide: { en: "{p}bet [amount/100b/all]" }
   },
 
   formatMoney: function (num) {
@@ -54,162 +31,127 @@ module.exports = {
     return num.toLocaleString();
   },
 
+  parseBet: function (input, userBalance) {
+    if (!input) return NaN;
+    const str = input.toLowerCase().trim();
+    if (str === "all") return userBalance;
+    const match = str.match(/^(\d+(\.\d+)?)\s*([kmb])?$/);
+    if (!match) return NaN;
+    let val = parseFloat(match[1]);
+    if (match[3] === "k") val *= 1000;
+    if (match[3] === "m") val *= 1000000;
+    if (match[3] === "b") val *= 1000000000;
+    return Math.floor(val);
+  },
+
   onStart: async function ({ api, event, args, message, usersData }) {
-    const senderID = event.senderID;
     const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
+    const { senderID } = event;
 
     try {
       let user = await BankUser.findOne({ userID: senderID });
       if (!user) user = await BankUser.create({ userID: senderID, balance: 1000 });
 
-      const rawBet = args[0];
-      if (!rawBet) {
-        return sendMsg("❌ Usage: #bet <bet_amount / 50b / all>\nExample: #bet 2m");
-      }
+      const bet = this.parseBet(args[0], user.balance);
+      if (isNaN(bet) || bet <= 0) return sendMsg("✨ ─── [ BET ERROR ] ─── ✨\n\n❌ Invalid bet amount!\n💡 Usage: #bet <amount/100b/all>");
+      if (bet > MAX_BET) return sendMsg(`❌ Maximum bet limit is $100 Billion!`);
+      if (user.balance < bet) return sendMsg(`❌ Insufficient balance! You have $${user.balance.toLocaleString()}`);
 
-      const bet = this.parseBet(rawBet, user.balance);
+      const isWin = Math.random() < 0.48;
+      let newBalance = isWin ? user.balance + bet : user.balance - bet;
 
-      if (bet === null || isNaN(bet) || bet <= 0) {
-        return sendMsg("❌ Please enter a valid bet amount!");
-      }
-
-      if (bet > MAX_BET) {
-        return sendMsg(`❌ Maximum bet limit is $50 Billion ($${this.formatMoney(MAX_BET)})!`);
-      }
-
-      if (user.balance < bet) {
-        return sendMsg(`❌ Insufficient funds! You need $${bet.toLocaleString()} in your balance.`);
-      }
-
-      // Bet Outcome Logic
-      const isWin = Math.random() < 0.50;
-      const winAmount = bet;
-
-      if (!user.betStats) {
-        user.betStats = { wins: 0, total: 0 };
-      }
-
-      user.betStats.total += 1;
-
-      if (isWin) {
-        user.balance += winAmount;
-        user.betStats.wins += 1;
-      } else {
-        user.balance -= bet;
-      }
-
-      await user.save();
-
-      const totalGames = user.betStats.total;
-      const totalWins = user.betStats.wins;
-      const winRate = ((totalWins / totalGames) * 100).toFixed(1);
+      await BankUser.updateOne({ userID: senderID }, { $set: { balance: newBalance } });
 
       let userName = senderID;
       if (usersData && typeof usersData.getName === "function") {
-        try {
-          userName = await usersData.getName(senderID);
-        } catch (e) {
-          userName = senderID;
-        }
+        try { userName = await usersData.getName(senderID); } catch (e) {}
       }
 
-      // Canvas Rendering
-      const canvas = createCanvas(800, 520);
+      // Canvas setup
+      const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
-      // Dark Gold / Midnight Blue Gradient
-      const gradient = ctx.createLinearGradient(0, 0, 800, 520);
-      gradient.addColorStop(0, "#0b0f19");
-      gradient.addColorStop(0.5, "#1e1b4b");
-      gradient.addColorStop(1, "#0b0f19");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 520);
+      ctx.fillStyle = isWin ? "#092011" : "#200909";
+      ctx.fillRect(0, 0, 800, 420);
 
-      // Gold Glow Border
-      ctx.strokeStyle = "#f59e0b";
+      ctx.strokeStyle = isWin ? "#2ecc71" : "#e74c3c";
       ctx.lineWidth = 4;
-      ctx.strokeRect(20, 20, 760, 480);
+      ctx.strokeRect(15, 15, 770, 390);
 
-      // Header Title
-      ctx.fillStyle = "#fbbf24";
-      ctx.font = "bold 28px Sans-serif";
-      ctx.fillText("🎲 DI-ABLO CASINO • QUICK BET ARENA 🎲", 50, 68);
+      ctx.fillStyle = "#f1c40f";
+      ctx.font = "bold 24px Sans-serif";
+      ctx.fillText("DI-ABLO CASINO • QUICK BET ARENA", 50, 55);
 
-      ctx.strokeStyle = "rgba(251, 191, 36, 0.3)";
+      // User Profile Picture
+      try {
+        const avatarUrl = `https://graph.facebook.com/${senderID}/picture?height=300&width=300&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
+        const avatarImg = await loadImage(avatarUrl);
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(110, 180, 50, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(avatarImg, 60, 130, 100, 100);
+        ctx.restore();
+
+        ctx.strokeStyle = isWin ? "#2ecc71" : "#e74c3c";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(110, 180, 51, 0, Math.PI * 2, true);
+        ctx.stroke();
+      } catch (e) {}
+
+      // Result Center Box
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(190, 100, 560, 160);
+      ctx.strokeStyle = isWin ? "rgba(46, 204, 113, 0.4)" : "rgba(231, 76, 60, 0.4)";
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(50, 85);
-      ctx.lineTo(750, 85);
-      ctx.stroke();
+      ctx.strokeRect(190, 100, 560, 160);
 
-      // Center Icon Box
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.fillRect(50, 115, 700, 160);
-      ctx.strokeStyle = isWin ? "#22c55e" : "#ef4444";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(50, 115, 700, 160);
-
-      const iconText = isWin ? "💸   💎   💵" : "💣   💥   💀";
-      ctx.font = "60px Sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(iconText, 400, 215);
+      ctx.fillStyle = isWin ? "#2ecc71" : "#e74c3c";
+      ctx.font = "bold 28px Sans-serif";
+      ctx.fillText(isWin ? "[ LUCKY CHOICE! YOU DOUBLED ]" : "[ BAD LUCK! YOU LOST ]", 470, 150);
+
+      ctx.font = "bold 36px Sans-serif";
+      ctx.fillStyle = isWin ? "#4ade80" : "#f87171";
+      ctx.fillText(isWin ? `+ $${this.formatMoney(bet)}` : `- $${this.formatMoney(bet)}`, 470, 215);
       ctx.textAlign = "left";
 
-      // Stats Bar (Win Rate & Total Games)
-      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-      ctx.fillRect(50, 300, 700, 60);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(50, 300, 700, 60);
+      // Info Footer
+      ctx.fillStyle = "rgba(255,255,255,0.05)";
+      ctx.fillRect(50, 280, 700, 50);
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.strokeRect(50, 280, 700, 50);
 
       ctx.fillStyle = "#cbd5e1";
       ctx.font = "bold 16px Sans-serif";
-      ctx.fillText(`🎯 WIN RATE: ${winRate}% (${totalWins}/${totalGames})`, 75, 336);
+      ctx.fillText(`BET STAKE: $${this.formatMoney(bet)}`, 70, 311);
 
       ctx.textAlign = "right";
-      ctx.fillText(`💵 BET: $${this.formatMoney(bet)}`, 725, 336);
+      ctx.fillText(`NEW BALANCE: $${newBalance.toLocaleString()}`, 730, 311);
       ctx.textAlign = "left";
 
-      // Outcome Banner
-      ctx.fillStyle = isWin ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)";
-      ctx.fillRect(50, 380, 700, 60);
-      ctx.strokeStyle = isWin ? "#22c55e" : "#ef4444";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(50, 380, 700, 60);
-
-      ctx.fillStyle = isWin ? "#4ade80" : "#f87171";
-      ctx.font = "bold 22px Sans-serif";
-      ctx.fillText(isWin ? `👑 LUCKY CHOICE! YOU DOUBLED` : `💀 BAD LUCK! YOU LOST`, 75, 417);
-
-      ctx.textAlign = "right";
-      ctx.fillText(isWin ? `+$${this.formatMoney(winAmount)}` : `-$${this.formatMoney(bet)}`, 725, 417);
-      ctx.textAlign = "left";
-
-      // Footer Info
       ctx.fillStyle = "#94a3b8";
-      ctx.font = "italic 16px Sans-serif";
-      ctx.fillText(`PLAYER: ${userName} • NEW BALANCE: $${user.balance.toLocaleString()}`, 50, 475);
+      ctx.font = "italic 14px Sans-serif";
+      ctx.fillText(`PLAYER: ${userName}`, 50, 375);
 
-      // Save & Output File
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
       const cachePath = path.join(cacheDir, `bet_${senderID}_${Date.now()}.png`);
+      await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
-      const buffer = canvas.toBuffer("image/png");
-      await fs.writeFile(cachePath, buffer);
-
-      const msgObj = {
+      const payload = {
         body: `🎲 **[ QUICK BET ARENA ]**`,
         attachment: fs.createReadStream(cachePath)
       };
 
-      return api.sendMessage(msgObj, event.threadID, () => {
-        if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      }, event.messageID);
-
+      const sendCallback = () => { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); };
+      return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
     } catch (err) {
-      console.error("Bet Error:", err);
-      return sendMsg("❌ Quick Bet Error!");
+      console.error(err);
+      return sendMsg("❌ Bet Error!");
     }
   }
 };
