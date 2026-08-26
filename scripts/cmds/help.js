@@ -123,7 +123,7 @@ module.exports = {
       msg += `╰────────────⭓\n\n`;
       msg += `⭔ Total Commands in this category: ${total}\n`;
       msg += `⭔ Type ${prefix}help <cmd> to see details.\n\n`;
-      msg += `╭─✦ ADMIN: Protik \n├‣ WHATSAPP\n╰‣ 01613828497`;
+      msg += `╭─✦ ADMIN: Protik 彡\n├‣ WHATSAPP\n╰‣ 01613828497`;
 
       try {
         const helpMessage = await message.reply({
@@ -155,7 +155,7 @@ module.exports = {
 
       msg += `\n⭔ Total Commands: ${commands.size}\n`;
       msg += `⭔ Type ${prefix}help <cmd> to see details.\n`;
-      msg += `\n╭─✦ OWNER: Protik \n├‣ author\n╰‣ DI-ABLO JI-SOO`;
+      msg += `\n╭─✦ ADMIN: Protik 彡\n├‣ WHATSAPP\n╰‣ 01613828497`;
 
       try {
         const helpMessage = await message.reply({
