@@ -143,7 +143,7 @@ module.exports = {
       await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
       const payload = {
-        body: `💸 **[ TRANSFER SUCCESSFUL ]**`,
+        body: `💸 [ TRANSFER SUCCESSFUL ]`,
         attachment: fs.createReadStream(cachePath)
       };
 
