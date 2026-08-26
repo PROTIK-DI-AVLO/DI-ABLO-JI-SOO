@@ -35,6 +35,7 @@ module.exports = {
     const { senderID } = event;
 
     try {
+      // Fetch top 5 users
       const topUsers = await BankUser.find().sort({ balance: -1 }).limit(5);
       if (!topUsers || topUsers.length === 0) return sendMsg("❌ No banking data found!");
 
@@ -53,28 +54,8 @@ module.exports = {
       ctx.font = "bold 24px Sans-serif";
       ctx.fillText("DI-ABLO BANK • TOP RICHEST LEADERBOARD", 40, 55);
 
-      // Top 1 User Avatar
-      const top1ID = topUsers[0].userID;
-      try {
-        const avatarUrl = `https://graph.facebook.com/${top1ID}/picture?height=200&width=200&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
-        const avatarImg = await loadImage(avatarUrl);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(710, 60, 35, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(avatarImg, 675, 25, 70, 70);
-        ctx.restore();
-
-        ctx.strokeStyle = "#f1c40f";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(710, 60, 36, 0, Math.PI * 2);
-        ctx.stroke();
-      } catch (e) {}
-
-      // Render Ranks List
-      let startY = 110;
+      // Render Ranks List (With Avatars)
+      let startY = 90;
       for (let i = 0; i < topUsers.length; i++) {
         const u = topUsers[i];
         let name = u.userID;
@@ -92,19 +73,40 @@ module.exports = {
         // Rank Badge
         ctx.fillStyle = i === 0 ? "#f1c40f" : i === 1 ? "#cbd5e1" : i === 2 ? "#b45309" : "#64748b";
         ctx.font = "bold 22px Sans-serif";
-        ctx.fillText(`#${i + 1}`, 65, startY + 40);
+        ctx.fillText(`#${i + 1}`, 55, startY + 40);
+
+        // Fetch & Draw Small Avatar for List
+        try {
+          const avatarUrl = `https://graph.facebook.com/${u.userID}/picture?height=100&width=100&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
+          const avatarImg = await loadImage(avatarUrl);
+          
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(130, startY + 32, 22, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(avatarImg, 108, startY + 10, 44, 44);
+          ctx.restore();
+
+          // Border for the avatar
+          ctx.strokeStyle = i === 0 ? "#f1c40f" : "#ffffff";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(130, startY + 32, 23, 0, Math.PI * 2);
+          ctx.stroke();
+        } catch (e) {}
 
         // Name
         ctx.fillStyle = "#ffffff";
         ctx.font = "bold 18px Sans-serif";
-        const displayName = name.length > 22 ? name.substring(0, 22) + "..." : name;
-        ctx.fillText(displayName, 130, startY + 39);
+        const displayName = name.length > 20 ? name.substring(0, 20) + "..." : name;
+        ctx.fillText(displayName, 170, startY + 39);
 
         // Balance
         ctx.textAlign = "right";
         ctx.fillStyle = i === 0 ? "#4ade80" : "#38bdf8";
         ctx.font = "bold 20px Sans-serif";
-        ctx.fillText(`$${this.formatMoney(u.balance)}`, 730, startY + 39);
+        ctx.fillText(`$${this.formatMoney(u.balance)}`, 740, startY + 39);
         ctx.textAlign = "left";
 
         startY += 75;
