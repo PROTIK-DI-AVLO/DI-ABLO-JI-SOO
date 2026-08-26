@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { createCanvas } = require("canvas");
+const { createCanvas, loadImage } = require("canvas");
 const fs = require("fs-extra");
 const path = require("path");
 
@@ -13,12 +13,12 @@ const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUse
 module.exports = {
   config: {
     name: "top",
-    aliases: ["richest", "leaderboard"],
-    version: "2.0.0",
+    aliases: ["topbal", "leaderboard", "lb"],
+    version: "2.5.0",
     author: "Pratik Shah",
-    countDown: 5,
+    countDown: 3,
     role: 0,
-    shortDescription: "Top 10 Richest Users",
+    shortDescription: "Top Richest Users Leaderboard",
     category: "banking",
     guide: { en: "{p}top" }
   },
@@ -31,24 +31,50 @@ module.exports = {
   },
 
   onStart: async function ({ api, event, message, usersData }) {
-    try {
-      const topUsers = await BankUser.find().sort({ balance: -1 }).limit(10);
+    const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
+    const { senderID } = event;
 
-      const canvas = createCanvas(750, 600);
+    try {
+      const topUsers = await BankUser.find().sort({ balance: -1 }).limit(5);
+      if (!topUsers || topUsers.length === 0) return sendMsg("❌ No banking data found!");
+
+      const canvas = createCanvas(800, 520);
       const ctx = canvas.getContext("2d");
 
-      ctx.fillStyle = "#0a0a0c";
-      ctx.fillRect(0, 0, 750, 600);
+      // Background
+      ctx.fillStyle = "#0b1329";
+      ctx.fillRect(0, 0, 800, 520);
 
       ctx.strokeStyle = "#f1c40f";
       ctx.lineWidth = 4;
-      ctx.strokeRect(15, 15, 720, 570);
+      ctx.strokeRect(15, 15, 770, 490);
 
       ctx.fillStyle = "#f1c40f";
       ctx.font = "bold 24px Sans-serif";
-      ctx.fillText("DI-ABLO BANK TOP 10 LEADERBOARD", 50, 55);
+      ctx.fillText("DI-ABLO BANK • TOP RICHEST LEADERBOARD", 40, 55);
 
-      let y = 100;
+      // Top 1 User Avatar
+      const top1ID = topUsers[0].userID;
+      try {
+        const avatarUrl = `https://graph.facebook.com/${top1ID}/picture?height=200&width=200&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
+        const avatarImg = await loadImage(avatarUrl);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(710, 60, 35, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(avatarImg, 675, 25, 70, 70);
+        ctx.restore();
+
+        ctx.strokeStyle = "#f1c40f";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(710, 60, 36, 0, Math.PI * 2);
+        ctx.stroke();
+      } catch (e) {}
+
+      // Render Ranks List
+      let startY = 110;
       for (let i = 0; i < topUsers.length; i++) {
         const u = topUsers[i];
         let name = u.userID;
@@ -56,44 +82,53 @@ module.exports = {
           try { name = await usersData.getName(u.userID); } catch (e) {}
         }
 
-        ctx.fillStyle = i < 3 ? "rgba(241, 196, 15, 0.1)" : "rgba(255, 255, 255, 0.03)";
-        ctx.fillRect(45, y - 22, 660, 40);
+        ctx.fillStyle = i === 0 ? "rgba(241, 196, 15, 0.15)" : "rgba(255, 255, 255, 0.05)";
+        ctx.fillRect(40, startY, 720, 65);
 
-        ctx.fillStyle = i === 0 ? "#f1c40f" : (i === 1 ? "#e2e8f0" : (i === 2 ? "#cd7f32" : "#94a3b8"));
-        ctx.font = "bold 18px Sans-serif";
-        ctx.fillText(`#${i + 1}`, 65, y + 5);
+        ctx.strokeStyle = i === 0 ? "#f1c40f" : "rgba(255, 255, 255, 0.1)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(40, startY, 720, 65);
 
+        // Rank Badge
+        ctx.fillStyle = i === 0 ? "#f1c40f" : i === 1 ? "#cbd5e1" : i === 2 ? "#b45309" : "#64748b";
+        ctx.font = "bold 22px Sans-serif";
+        ctx.fillText(`#${i + 1}`, 65, startY + 40);
+
+        // Name
         ctx.fillStyle = "#ffffff";
-        ctx.font = "16px Sans-serif";
-        ctx.fillText(name.substring(0, 25), 130, y + 5);
-
-        ctx.fillStyle = "#4ade80";
         ctx.font = "bold 18px Sans-serif";
+        const displayName = name.length > 22 ? name.substring(0, 22) + "..." : name;
+        ctx.fillText(displayName, 130, startY + 39);
+
+        // Balance
         ctx.textAlign = "right";
-        ctx.fillText(`$${this.formatMoney(u.balance)}`, 680, y + 5);
+        ctx.fillStyle = i === 0 ? "#4ade80" : "#38bdf8";
+        ctx.font = "bold 20px Sans-serif";
+        ctx.fillText(`$${this.formatMoney(u.balance)}`, 730, startY + 39);
         ctx.textAlign = "left";
 
-        y += 46;
+        startY += 75;
       }
 
       ctx.fillStyle = "#64748b";
       ctx.font = "italic 14px Sans-serif";
-      ctx.fillText("DI-ABLO BANKING SYSTEM • OFFICIAL RICHEST LIST", 50, 560);
+      ctx.fillText(`REQUESTED BY USER ID: ${senderID}`, 40, 485);
 
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
-      const cachePath = path.join(cacheDir, `top_${Date.now()}.png`);
+      const cachePath = path.join(cacheDir, `top_${senderID}_${Date.now()}.png`);
       await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
       const payload = {
-        body: `🏆 [ DI-ABLO BANK TOP 10 ]`,
+        body: `🏆 [ DI-ABLO BANK LEADERBOARD ]`,
         attachment: fs.createReadStream(cachePath)
       };
 
       const sendCallback = () => { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); };
       return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
+      return sendMsg("❌ Leaderboard Error!");
     }
   }
 };
