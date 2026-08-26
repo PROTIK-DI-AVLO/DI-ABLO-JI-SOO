@@ -5,47 +5,23 @@ const path = require("path");
 
 const bankUserSchema = new mongoose.Schema({
   userID: { type: String, required: true, unique: true },
-  balance: { type: Number, default: 0 },
-  loan: { type: Number, default: 0 },
-  slotWins: { type: Number, default: 0 },
-  slotTotal: { type: Number, default: 0 },
-  lastSlotDate: { type: String, default: "" },
-  slotCount: { type: Number, default: 0 },
-  slotWindowStart: { type: Number, default: 0 }
+  balance: { type: Number, default: 0 }
 });
 
 const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", bankUserSchema);
-const MAX_BET = 100000000000; // 100 Billion Limit
+const MAX_BET = 100000000000;
 
 module.exports = {
   config: {
     name: "slot",
     aliases: ["slots"],
     version: "2.0.0",
-    author: "DI-ABLO JI-SOO",
-    countDown: 2,
+    author: "Pratik Shah",
+    countDown: 3,
     role: 0,
-    shortDescription: "Play casino slot game with Canvas interface",
+    shortDescription: "Lucky Slots Game",
     category: "game",
-    guide: { en: "{p}slot [amount / 2m / 5k / 100b / all]" }
-  },
-
-  parseAmount: function (str, userBalance) {
-    if (!str) return null;
-    str = str.toLowerCase().trim();
-    if (str === "all") return userBalance;
-
-    const match = str.match(/^(\d+(\.\d+)?)\s*([kmb])?$/);
-    if (!match) return null;
-
-    let value = parseFloat(match[1]);
-    const unit = match[3];
-
-    if (unit === "k") value *= 1000;
-    else if (unit === "m") value *= 1000000;
-    else if (unit === "b") value *= 1000000000;
-
-    return Math.floor(value);
+    guide: { en: "{p}slot [bet_amount]" }
   },
 
   formatMoney: function (num) {
@@ -55,229 +31,114 @@ module.exports = {
     return num.toLocaleString();
   },
 
+  parseBet: function (input, userBalance) {
+    if (!input) return NaN;
+    const str = input.toLowerCase().trim();
+    if (str === "all") return userBalance;
+    const match = str.match(/^(\d+(\.\d+)?)\s*([kmb])?$/);
+    if (!match) return NaN;
+    let val = parseFloat(match[1]);
+    if (match[3] === "k") val *= 1000;
+    if (match[3] === "m") val *= 1000000;
+    if (match[3] === "b") val *= 1000000000;
+    return Math.floor(val);
+  },
+
   onStart: async function ({ api, event, args, message, usersData }) {
-    const senderID = event.senderID;
     const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
+    const { senderID } = event;
 
     try {
       let user = await BankUser.findOne({ userID: senderID });
-      if (!user) {
-        user = await BankUser.create({ userID: senderID, balance: 1000 });
-      }
+      if (!user) user = await BankUser.create({ userID: senderID, balance: 1000 });
 
-      if (!args[0]) {
-        return sendMsg("❌ Please enter a bet amount. Example: #slot 2m / #slot 100b");
-      }
+      const bet = this.parseBet(args[0], user.balance);
+      if (isNaN(bet) || bet <= 0) return sendMsg("❌ Invalid bet amount!");
+      if (bet > MAX_BET) return sendMsg(`❌ Max bet limit is $100B!`);
+      if (user.balance < bet) return sendMsg(`❌ Insufficient funds!`);
 
-      const betAmount = this.parseAmount(args[0], user.balance);
+      const symbols = ["777", "BAR", "GEM", "VIP", "WILD"];
+      const s1 = symbols[Math.floor(Math.random() * symbols.length)];
+      const s2 = symbols[Math.floor(Math.random() * symbols.length)];
+      const s3 = symbols[Math.floor(Math.random() * symbols.length)];
 
-      if (betAmount === null || isNaN(betAmount) || betAmount <= 0) {
-        return sendMsg("❌ Invalid bet amount!");
-      }
+      const isJackpot = s1 === s2 && s2 === s3;
+      const isTwoMatch = s1 === s2 || s2 === s3 || s1 === s3;
 
-      if (betAmount > MAX_BET) {
-        return sendMsg(`❌ Maximum bet limit is $100B ($${this.formatMoney(MAX_BET)}).`);
-      }
+      let multiplier = isJackpot ? 5 : (isTwoMatch ? 2 : 0);
+      let winAmount = bet * multiplier;
+      let newBalance = user.balance + (winAmount - bet);
 
-      if (user.balance < betAmount) {
-        return sendMsg(`❌ Insufficient balance! You have $${user.balance.toLocaleString()}.`);
-      }
-
-      // 5 Hours Cooldown & 30 Spins Limit Logic
-      const now = Date.now();
-      const FIVE_HOURS = 5 * 60 * 60 * 1000;
-
-      let windowStart = user.slotWindowStart || 0;
-      let currentCount = user.slotCount || 0;
-
-      if (!windowStart || (now - windowStart) > FIVE_HOURS) {
-        windowStart = now;
-        currentCount = 0;
-      }
-
-      if (currentCount >= 30) {
-        const remainingMs = FIVE_HOURS - (now - windowStart);
-        const remainingMins = Math.ceil(remainingMs / (60 * 1000));
-        const hours = Math.floor(remainingMins / 60);
-        const mins = remainingMins % 60;
-
-        const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-        return sendMsg(`❌ You have reached the limit of 30 spins per 5 hours.\n⏳ Please wait ${timeStr} to play again.`);
-      }
-
-      // Daily Reset Check
-      const today = new Date().toISOString().slice(0, 10);
-      let wins = user.slotWins || 0;
-      let total = user.slotTotal || 0;
-
-      if (user.lastSlotDate !== today) {
-        wins = 0;
-        total = 0;
-      }
-
-      // Heart Icons for Slot
-      const items = ["💜", "❤️", "🤍", "💚", "💛", "💙"];
-      const icon1 = items[Math.floor(Math.random() * items.length)];
-      const icon2 = items[Math.floor(Math.random() * items.length)];
-      const icon3 = items[Math.floor(Math.random() * items.length)];
-
-      let winMultiplier = 0;
-      if (icon1 === icon2 && icon2 === icon3) {
-        winMultiplier = 3;
-      } else if (icon1 === icon2 || icon1 === icon3 || icon2 === icon3) {
-        winMultiplier = 2;
-      }
-
-      total += 1;
-      currentCount += 1;
-      let prize = 0;
-      let newBalance = user.balance;
-
-      if (winMultiplier > 0) {
-        wins += 1;
-        prize = betAmount * winMultiplier;
-        newBalance = user.balance + (prize - betAmount);
-      } else {
-        newBalance = user.balance - betAmount;
-      }
-
-      // Explicit MongoDB Update
-      await BankUser.updateOne(
-        { userID: senderID },
-        {
-          $set: {
-            balance: newBalance,
-            slotWins: wins,
-            slotTotal: total,
-            lastSlotDate: today,
-            slotCount: currentCount,
-            slotWindowStart: windowStart
-          }
-        }
-      );
-
-      const winRate = ((wins / total) * 100).toFixed(1);
+      await BankUser.updateOne({ userID: senderID }, { $set: { balance: newBalance } });
 
       let userName = senderID;
       if (usersData && typeof usersData.getName === "function") {
-        try {
-          userName = await usersData.getName(senderID);
-        } catch (e) {
-          userName = senderID;
-        }
+        try { userName = await usersData.getName(senderID); } catch (e) {}
       }
 
       // Canvas Rendering
-      const canvas = createCanvas(800, 520);
+      const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
-      // Deep Purple Casino Background Gradient
-      const gradient = ctx.createLinearGradient(0, 0, 800, 520);
-      gradient.addColorStop(0, "#0d0814");
-      gradient.addColorStop(0.5, "#251238");
-      gradient.addColorStop(1, "#0d0814");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 520);
+      ctx.fillStyle = "#120617";
+      ctx.fillRect(0, 0, 800, 420);
 
-      // Glowing Magenta Border
-      ctx.strokeStyle = "#ec4899";
+      ctx.strokeStyle = "#a855f7";
       ctx.lineWidth = 4;
-      ctx.strokeRect(20, 20, 760, 480);
+      ctx.strokeRect(15, 15, 770, 390);
 
-      // Header Title
-      ctx.fillStyle = "#f472b6";
-      ctx.font = "bold 28px Sans-serif";
-      ctx.fillText("🎰 DI-ABLO CASINO • LUCKY SLOTS 🎰", 50, 68);
+      ctx.fillStyle = "#c084fc";
+      ctx.font = "bold 24px Sans-serif";
+      ctx.fillText("DI-ABLO CASINO • LUCKY SLOTS", 50, 55);
 
-      ctx.strokeStyle = "rgba(244, 114, 182, 0.3)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(50, 85);
-      ctx.lineTo(750, 85);
-      ctx.stroke();
+      // Slot Reels (Clean Text Badges)
+      const reels = [s1, s2, s3];
+      const reelX = [60, 300, 540];
 
-      // Slot Machine Display Frame (3 Boxes)
-      const slotBoxWidth = 210;
-      const slotBoxHeight = 160;
-      const startX = 65;
-      const slotY = 115;
-      const spacing = 35;
+      reels.forEach((symbol, i) => {
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(reelX[i], 90, 200, 130);
+        ctx.strokeStyle = "#a855f7";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(reelX[i], 90, 200, 130);
 
-      const reelIcons = [icon1, icon2, icon3];
-
-      for (let i = 0; i < 3; i++) {
-        const boxX = startX + i * (slotBoxWidth + spacing);
-
-        // Box Background & Glow Border
-        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-        ctx.fillRect(boxX, slotY, slotBoxWidth, slotBoxHeight);
-        ctx.strokeStyle = winMultiplier > 0 ? "#ffd700" : "#a855f7";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(boxX, slotY, slotBoxWidth, slotBoxHeight);
-
-        // Render Emoji Icon
-        ctx.font = "75px Sans-serif";
+        ctx.fillStyle = symbol === "777" ? "#f1c40f" : (symbol === "VIP" ? "#ef4444" : "#38bdf8");
+        ctx.font = "bold 40px Sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(reelIcons[i], boxX + slotBoxWidth / 2, slotY + 110);
-      }
+        ctx.fillText(symbol, reelX[i] + 100, 170);
+      });
+
       ctx.textAlign = "left";
 
-      // Stats Bar (Win Rate & Remaining Spins)
-      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-      ctx.fillRect(50, 300, 700, 60);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(50, 300, 700, 60);
+      // Result Bar
+      ctx.fillStyle = multiplier > 0 ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)";
+      ctx.fillRect(50, 280, 700, 50);
+      ctx.strokeStyle = multiplier > 0 ? "#22c55e" : "#ef4444";
+      ctx.strokeRect(50, 280, 700, 50);
 
-      ctx.fillStyle = "#cbd5e1";
-      ctx.font = "bold 16px Sans-serif";
-      ctx.fillText(`🎯 TODAY'S WIN RATE: ${winRate}% (${wins}/${total})`, 75, 336);
+      ctx.fillStyle = multiplier > 0 ? "#4ade80" : "#f87171";
+      ctx.font = "bold 20px Sans-serif";
+      ctx.fillText(multiplier > 0 ? `YOU WON +$${this.formatMoney(winAmount)} (${multiplier}x)!` : `YOU LOST -$${this.formatMoney(bet)}`, 70, 312);
 
-      ctx.textAlign = "right";
-      ctx.fillText(`🎰 SPINS LEFT (5H): ${30 - currentCount}/30`, 725, 336);
-      ctx.textAlign = "left";
-
-      // Win / Loss Result Banner
-      const isWin = winMultiplier > 0;
-      ctx.fillStyle = isWin ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)";
-      ctx.fillRect(50, 380, 700, 60);
-      ctx.strokeStyle = isWin ? "#22c55e" : "#ef4444";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(50, 380, 700, 60);
-
-      ctx.fillStyle = isWin ? "#4ade80" : "#f87171";
-      ctx.font = "bold 22px Sans-serif";
-      ctx.fillText(isWin ? `🎉 YOU WON $${this.formatMoney(prize)}!` : `💔 YOU LOST $${this.formatMoney(betAmount)}`, 75, 417);
-
-      ctx.textAlign = "right";
-      ctx.fillText(`BET: $${this.formatMoney(betAmount)}`, 725, 417);
-      ctx.textAlign = "left";
-
-      // Footer Info
       ctx.fillStyle = "#94a3b8";
-      ctx.font = "italic 16px Sans-serif";
-      ctx.fillText(`PLAYER: ${userName} • NEW BALANCE: $${newBalance.toLocaleString()}`, 50, 475);
+      ctx.font = "italic 14px Sans-serif";
+      ctx.fillText(`PLAYER: ${userName} • NEW BALANCE: $${newBalance.toLocaleString()}`, 50, 375);
 
-      // Cache File Handling
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
       const cachePath = path.join(cacheDir, `slot_${senderID}_${Date.now()}.png`);
+      await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
-      const buffer = canvas.toBuffer("image/png");
-      await fs.writeFile(cachePath, buffer);
-
-      const msgObj = {
+      const payload = {
         body: `🎰 **[ LUCKY SLOTS RESULT ]**`,
         attachment: fs.createReadStream(cachePath)
       };
 
-      return api.sendMessage(msgObj, event.threadID, () => {
-        if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      }, event.messageID);
-
-    } catch (err) {
-      console.error("Slot Error:", err);
-      return sendMsg("❌ Slot game error!");
+      const sendCallback = () => { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); };
+      return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
+    } catch (e) {
+      console.error(e);
+      return sendMsg("❌ Slot Error!");
     }
   }
 };
