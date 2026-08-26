@@ -14,7 +14,7 @@ module.exports = {
   config: {
     name: "rob",
     aliases: ["steal", "heist"],
-    version: "2.0.0",
+    version: "2.1.0",
     author: "Pratik Shah",
     countDown: 10,
     role: 0,
@@ -35,7 +35,7 @@ module.exports = {
     const { senderID, mentions } = event;
 
     const mentionIDs = Object.keys(mentions || {});
-    if (mentionIDs.length === 0) return sendMsg("🕵️ **[ HEIST ARENA ]**\n\n❌ Tag a user to rob!\n💡 Usage: #rob @mention");
+    if (mentionIDs.length === 0) return sendMsg("🕵️ [ HEIST ARENA ]\n\n❌ Tag a user to rob!\n💡 Usage: #rob @mention");
 
     const victimID = mentionIDs[0];
     if (victimID === senderID) return sendMsg("❌ You cannot rob yourself!");
@@ -63,12 +63,15 @@ module.exports = {
         await BankUser.updateOne({ userID: victimID }, { $inc: { balance: fineAmount } });
       }
 
-      let robberName = senderID, victimName = mentions[victimID].replace("@", "");
+      // Fetch Names properly
+      let robberName = senderID;
+      let victimName = victimID;
       if (usersData && typeof usersData.getName === "function") {
         try { robberName = await usersData.getName(senderID); } catch (e) {}
+        try { victimName = await usersData.getName(victimID); } catch (e) {}
       }
 
-      // Canvas Dual Avatar Render
+      // Canvas Dual Avatar & Info Render
       const canvas = createCanvas(800, 420);
       const ctx = canvas.getContext("2d");
 
@@ -81,56 +84,81 @@ module.exports = {
 
       ctx.fillStyle = "#f1c40f";
       ctx.font = "bold 24px Sans-serif";
-      ctx.fillText("DI-ABLO CASINO • HEIST & ROBBERY", 50, 55);
+      ctx.fillText("DI-ABLO CASINO • HEIST & ROBBERY", 40, 55);
 
-      // Draw Robber & Victim Avatars
-      const drawAvatar = async (x, y, uid, title) => {
+      // Function to draw Avatar & Profile Card
+      const drawAvatarCard = async (x, y, uid, title, name) => {
         ctx.fillStyle = "rgba(0,0,0,0.5)";
-        ctx.fillRect(x, y, 300, 130);
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.strokeRect(x, y, 300, 130);
-
-        ctx.fillStyle = "#94a3b8";
-        ctx.font = "bold 14px Sans-serif";
-        ctx.fillText(title, x + 110, y + 40);
+        ctx.fillRect(x, y, 340, 130);
+        ctx.strokeStyle = isSuccess ? "rgba(46, 204, 113, 0.3)" : "rgba(231, 76, 60, 0.3)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, 340, 130);
 
         try {
           const url = `https://graph.facebook.com/${uid}/picture?height=200&width=200&access_token=6628568379%7Cc15a440756e44ac5b2aa361a52f5a94f`;
           const img = await loadImage(url);
           ctx.save();
           ctx.beginPath();
-          ctx.arc(x + 55, y + 65, 35, 0, Math.PI * 2);
+          ctx.arc(x + 55, y + 65, 38, 0, Math.PI * 2);
           ctx.closePath();
           ctx.clip();
-          ctx.drawImage(img, x + 20, y + 30, 70, 70);
+          ctx.drawImage(img, x + 17, y + 27, 76, 76);
           ctx.restore();
+
+          // Avatar Border
+          ctx.strokeStyle = isSuccess ? "#2ecc71" : "#e74c3c";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(x + 55, y + 65, 39, 0, Math.PI * 2);
+          ctx.stroke();
         } catch (e) {}
+
+        // Title (ROBBER / VICTIM)
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "bold 13px Sans-serif";
+        ctx.fillText(title, x + 110, y + 40);
+
+        // User Name
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 18px Sans-serif";
+        const displayName = name.length > 16 ? name.substring(0, 16) + "..." : name;
+        ctx.fillText(displayName, x + 110, y + 70);
+
+        // User ID
+        ctx.fillStyle = "#64748b";
+        ctx.font = "12px Sans-serif";
+        ctx.fillText(`ID: ${uid}`, x + 110, y + 95);
       };
 
-      await drawAvatar(50, 90, senderID, "ROBBER");
-      await drawAvatar(450, 90, victimID, "VICTIM");
+      await drawAvatarCard(40, 90, senderID, "ATTACKER / ROBBER", robberName);
+      await drawAvatarCard(420, 90, victimID, "DEFENDER / VICTIM", victimName);
 
+      // VS Badge in middle
       ctx.fillStyle = isSuccess ? "#2ecc71" : "#e74c3c";
-      ctx.font = "bold 28px Sans-serif";
-      ctx.fillText("VS", 385, 160);
+      ctx.font = "bold 22px Sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("VS", 400, 162);
+      ctx.textAlign = "left";
 
       // Result Bar
       ctx.fillStyle = isSuccess ? "rgba(46, 204, 113, 0.2)" : "rgba(231, 76, 60, 0.2)";
-      ctx.fillRect(50, 250, 700, 60);
+      ctx.fillRect(40, 245, 720, 65);
       ctx.strokeStyle = isSuccess ? "#2ecc71" : "#e74c3c";
-      ctx.strokeRect(50, 250, 700, 60);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(40, 245, 720, 65);
 
       ctx.fillStyle = isSuccess ? "#4ade80" : "#f87171";
       ctx.font = "bold 22px Sans-serif";
-      ctx.fillText(isSuccess ? "[ HEIST SUCCESSFUL! ]" : "[ CAUGHT BY POLICE! ]", 70, 288);
+      ctx.fillText(isSuccess ? "[ HEIST SUCCESSFUL! ]" : "[ CAUGHT BY POLICE! ]", 60, 285);
 
       ctx.textAlign = "right";
-      ctx.fillText(isSuccess ? `+$${this.formatMoney(stolenAmount)} STOLEN` : `-$${this.formatMoney(fineAmount)} FINE PAID`, 730, 288);
+      ctx.fillText(isSuccess ? `+$${this.formatMoney(stolenAmount)} STOLEN` : `-$${this.formatMoney(fineAmount)} FINE PAID`, 740, 285);
       ctx.textAlign = "left";
 
+      // Footer info
       ctx.fillStyle = "#64748b";
       ctx.font = "italic 14px Sans-serif";
-      ctx.fillText(`ROBBER: ${robberName}  |  VICTIM: ${victimName}`, 50, 370);
+      ctx.fillText("DI-ABLO CASINO • SECURE HEIST SYSTEM", 40, 365);
 
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
