@@ -3,22 +3,23 @@ const { createCanvas } = require("canvas");
 const fs = require("fs-extra");
 const path = require("path");
 
-const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", new mongoose.Schema({
+const bankUserSchema = new mongoose.Schema({
   userID: { type: String, required: true, unique: true },
-  balance: { type: Number, default: 0 },
-  loan: { type: Number, default: 0 }
-}));
+  balance: { type: Number, default: 0 }
+});
+
+const BankUser = mongoose.models.DiabloBankUser || mongoose.model("DiabloBankUser", bankUserSchema);
 
 module.exports = {
   config: {
     name: "top",
-    aliases: ["leaderboard", "rich"],
-    version: "1.0.0",
-    author: "DI-ABLO JI-SOO",
+    aliases: ["richest", "leaderboard"],
+    version: "2.0.0",
+    author: "Pratik Shah",
     countDown: 5,
     role: 0,
-    shortDescription: "Top 10 richest users leaderboard image",
-    category: "economy",
+    shortDescription: "Top 10 Richest Users",
+    category: "banking",
     guide: { en: "{p}top" }
   },
 
@@ -30,116 +31,69 @@ module.exports = {
   },
 
   onStart: async function ({ api, event, message, usersData }) {
-    const sendMsg = (txt) => message && typeof message.reply === "function" ? message.reply(txt) : api.sendMessage(txt, event.threadID, event.messageID);
-
     try {
       const topUsers = await BankUser.find().sort({ balance: -1 }).limit(10);
-      if (!topUsers || topUsers.length === 0) {
-        return sendMsg("❌ No registered users found in bank!");
-      }
 
-      const canvas = createCanvas(800, 750);
+      const canvas = createCanvas(750, 600);
       const ctx = canvas.getContext("2d");
 
-      // Background Gradient
-      const gradient = ctx.createLinearGradient(0, 0, 800, 750);
-      gradient.addColorStop(0, "#0a0a16");
-      gradient.addColorStop(0.5, "#161836");
-      gradient.addColorStop(1, "#0a0a16");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 750);
+      ctx.fillStyle = "#0a0a0c";
+      ctx.fillRect(0, 0, 750, 600);
 
-      // Border Glow
-      ctx.strokeStyle = "#ffd700";
+      ctx.strokeStyle = "#f1c40f";
       ctx.lineWidth = 4;
-      ctx.strokeRect(15, 15, 770, 720);
+      ctx.strokeRect(15, 15, 720, 570);
 
-      // Header Title
-      ctx.fillStyle = "#ffd700";
-      ctx.font = "bold 32px Sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("🏆 DI-ABLO BANK TOP 10 LEADERBOARD 🏆", 400, 65);
+      ctx.fillStyle = "#f1c40f";
+      ctx.font = "bold 24px Sans-serif";
+      ctx.fillText("DI-ABLO BANK TOP 10 LEADERBOARD", 50, 55);
 
-      ctx.strokeStyle = "rgba(255, 215, 0, 0.3)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(50, 85);
-      ctx.lineTo(750, 85);
-      ctx.stroke();
-
-      // Render Top Users List
-      let startY = 135;
-      ctx.textAlign = "left";
-
+      let y = 100;
       for (let i = 0; i < topUsers.length; i++) {
         const u = topUsers[i];
-        let rawName = "Unknown";
-        try {
-          rawName = await usersData.getName(u.userID);
-        } catch (e) {
-          rawName = `User ${u.userID.slice(-4)}`;
+        let name = u.userID;
+        if (usersData && typeof usersData.getName === "function") {
+          try { name = await usersData.getName(u.userID); } catch (e) {}
         }
 
-        const uName = rawName.length > 20 ? rawName.slice(0, 18) + ".." : rawName;
-        const rank = i + 1;
+        ctx.fillStyle = i < 3 ? "rgba(241, 196, 15, 0.1)" : "rgba(255, 255, 255, 0.03)";
+        ctx.fillRect(45, y - 22, 660, 40);
 
-        // Rank Row Background Highlight
-        ctx.fillStyle = i === 0 ? "rgba(255, 215, 0, 0.15)" : i === 1 ? "rgba(192, 192, 192, 0.12)" : i === 2 ? "rgba(205, 127, 50, 0.12)" : "rgba(255, 255, 255, 0.04)";
-        ctx.fillRect(40, startY - 30, 720, 48);
+        ctx.fillStyle = i === 0 ? "#f1c40f" : (i === 1 ? "#e2e8f0" : (i === 2 ? "#cd7f32" : "#94a3b8"));
+        ctx.font = "bold 18px Sans-serif";
+        ctx.fillText(`#${i + 1}`, 65, y + 5);
 
-        // Medals / Badges Colors
-        let rankColor = "#ffffff";
-        let medal = `#${rank}`;
-        if (rank === 1) { rankColor = "#ffd700"; medal = "🥇 #1"; }
-        else if (rank === 2) { rankColor = "#c0c0c0"; medal = "🥈 #2"; }
-        else if (rank === 3) { rankColor = "#cd7f32"; medal = "🥉 #3"; }
-
-        // Draw Rank
-        ctx.fillStyle = rankColor;
-        ctx.font = "bold 22px Sans-serif";
-        ctx.fillText(medal, 55, startY + 2);
-
-        // Draw User Name
         ctx.fillStyle = "#ffffff";
-        ctx.font = "20px Sans-serif";
-        ctx.fillText(uName, 180, startY + 2);
+        ctx.font = "16px Sans-serif";
+        ctx.fillText(name.substring(0, 25), 130, y + 5);
 
-        // Draw Balance
-        ctx.fillStyle = "#2ecc71";
-        ctx.font = "bold 22px Sans-serif";
+        ctx.fillStyle = "#4ade80";
+        ctx.font = "bold 18px Sans-serif";
         ctx.textAlign = "right";
-        ctx.fillText(`$${this.formatMoney(u.balance)}`, 740, startY + 2);
+        ctx.fillText(`$${this.formatMoney(u.balance)}`, 680, y + 5);
         ctx.textAlign = "left";
 
-        startY += 58;
+        y += 46;
       }
 
-      // Footer
-      ctx.fillStyle = "#777777";
-      ctx.font = "italic 16px Sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("DI-ABLO BANKING SYSTEM • OFFICIAL RICHEST LIST", 400, 715);
+      ctx.fillStyle = "#64748b";
+      ctx.font = "italic 14px Sans-serif";
+      ctx.fillText("DI-ABLO BANKING SYSTEM • OFFICIAL RICHEST LIST", 50, 560);
 
-      // Save and Output
       const cacheDir = path.join(__dirname, "cache");
       await fs.ensureDir(cacheDir);
-      const cachePath = path.join(cacheDir, `top_leaderboard.png`);
+      const cachePath = path.join(cacheDir, `top_${Date.now()}.png`);
+      await fs.writeFile(cachePath, canvas.toBuffer("image/png"));
 
-      const buffer = canvas.toBuffer("image/png");
-      await fs.writeFile(cachePath, buffer);
-
-      const msgObj = {
-        body: `🏆 **[ DI-ABLO BANK TOP 10 ]**`,
+      const payload = {
+        body: `🏆 [ DI-ABLO BANK TOP 10 ]`,
         attachment: fs.createReadStream(cachePath)
       };
 
-      return api.sendMessage(msgObj, event.threadID, () => {
-        if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      }, event.messageID);
-
-    } catch (err) {
-      console.error(err);
-      return sendMsg("❌ Failed to load leaderboard image!");
+      const sendCallback = () => { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); };
+      return message && typeof message.reply === "function" ? message.reply(payload, sendCallback) : api.sendMessage(payload, event.threadID, sendCallback, event.messageID);
+    } catch (e) {
+      console.error(e);
     }
   }
 };
